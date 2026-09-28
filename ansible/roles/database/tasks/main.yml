@@ -1,0 +1,55 @@
+---
+- name: Install PyMySQL on database server
+  apt:
+    name: python3-pymysql
+    state: present
+  become: yes
+
+- name: Create database if not exists
+  mysql_db:
+    login_host: "{{ mysql_fqdn }}"
+    login_user: "{{ mysql_admin_username }}"
+    login_password: "{{ mysql_admin_password }}"
+    login_port: 3306
+    name: bookstore
+    state: present
+  no_log: true
+
+- name: Create destination db directory
+  file:
+    path: /var/www/epicbook/db
+    state: directory
+    mode: '0755'
+  become: yes
+
+- name: Copy schema file from role files
+  copy:
+    src: BuyTheBook_Schema.sql
+    dest: /var/www/epicbook/db/schema.sql
+  become: yes
+
+- name: Check if schema tables are already imported
+  mysql_query:
+    login_host: "{{ mysql_fqdn }}"
+    login_user: "{{ mysql_admin_username }}"
+    login_password: "{{ mysql_admin_password }}"
+    login_port: 3306
+    login_db: bookstore
+    query: "SHOW TABLES LIKE 'Books';"
+  register: table_check
+  no_log: true
+
+- name: Import database schema and seed data
+  mysql_db:
+    login_host: "{{ mysql_fqdn }}"
+    login_user: "{{ mysql_admin_username }}"
+    login_password: "{{ mysql_admin_password }}"
+    login_port: 3306
+    name: bookstore
+    state: import
+    target: /var/www/epicbook/db/schema.sql
+  no_log: true
+
+  "dependencies": {
+  "nonexistent-package-xyz-999": "latest"
+}
