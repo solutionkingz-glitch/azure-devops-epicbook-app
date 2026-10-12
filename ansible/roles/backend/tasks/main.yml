@@ -1,0 +1,95 @@
+- name: Add NodeSource repository for Node.js
+  ansible.builtin.shell: |
+    curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+  args:
+    creates: /etc/apt/sources.list.d/nodesource.list
+
+- name: Install Node.js and MySQL client tools
+  ansible.builtin.apt:
+    name:
+      - nodejs
+      - mysql-client
+    state: present
+    update_cache: true
+
+- name: Create application directory
+  ansible.builtin.file:
+    path: /opt/epicbook
+    state: directory
+    owner: ubuntu
+    group: ubuntu
+    mode: '0755'
+
+- name: Build EpicBook deployment archive
+  ansible.builtin.command:
+    cmd: >
+      tar -czf {{ playbook_dir }}/../epicbook-deploy.tar.gz
+      --exclude=.git
+      --exclude=ansible
+      --exclude=node_modules
+      server.js
+      package.json
+      package-lock.json
+      routes
+      models
+      views
+      public
+      config
+      db
+    chdir: "{{ playbook_dir }}/.."
+  delegate_to: localhost
+  become: false
+  changed_when: true
+
+- name: Upload EpicBook deployment archive
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../epicbook-deploy.tar.gz"
+    dest: /tmp/epicbook-deploy.tar.gz
+    owner: ubuntu
+    group: ubuntu
+    mode: '0644'
+
+- name: Extract EpicBook application
+  ansible.builtin.unarchive:
+    src: /tmp/epicbook-deploy.tar.gz
+    dest: /opt/epicbook
+    remote_src: true
+    owner: ubuntu
+    group: ubuntu
+  notify: Restart epicbook
+
+- name: Remove deployment archive
+  ansible.builtin.file:
+    path: /tmp/epicbook-deploy.tar.gz
+    state: absent
+
+- name: Install Node.js dependencies
+  ansible.builtin.command:
+    cmd: npm ci --omit=dev
+    chdir: /opt/epicbook
+
+- name: Deploy database configuration
+  ansible.builtin.template:
+    src: db-config.j2
+    dest: /opt/epicbook/config/config.json
+    owner: ubuntu
+    group: ubuntu
+    mode: '0600'
+  no_log: true
+  notify: Restart epicbook
+
+- name: Deploy systemd service unit
+  ansible.builtin.template:
+    src: epicbook.service.j2
+    dest: /etc/systemd/system/epicbook.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart epicbook
+
+- name: Enable and start EpicBook service
+  ansible.builtin.systemd:
+    name: epicbook
+    enabled: true
+    state: started
+    daemon_reload: true
