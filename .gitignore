@@ -1,2 +1,22 @@
 node_modules
 .DS_Store
+
+# Secrets and keys: never commit
+*.pem
+*.key
+epicbook_key*
+id_rsa*
+.env
+secrets.yml
+secrets.yaml
+vault_pass*
+*.retry
+
+# Ansible temp files
+.ansible/
+ansible/.ansible/
+*.vault
+
+# Local credentials
+*.tfvars
+!terraform.tfvars.example
