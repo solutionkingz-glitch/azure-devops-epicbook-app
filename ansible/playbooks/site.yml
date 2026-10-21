@@ -23,3 +23,8 @@
   hosts: backend
   roles:
     - database
+
+- name: Verify deployment
+  hosts: all
+  roles:
+    - verify

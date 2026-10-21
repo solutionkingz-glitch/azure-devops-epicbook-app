@@ -1,0 +1,56 @@
+---
+- name: Backend checks
+  when: "'backend' in group_names"
+  block:
+    - name: Check epicbook service state
+      ansible.builtin.command: systemctl is-active epicbook
+      changed_when: false
+      register: svc
+
+    - name: Assert service active
+      ansible.builtin.assert:
+        that: svc.stdout == 'active'
+
+    - name: Wait for backend port
+      ansible.builtin.wait_for:
+        port: "{{ app_port }}"
+        timeout: 30
+
+    - name: Count tables
+      ansible.builtin.command: >
+        mysql -h {{ mysql_fqdn }} -u {{ mysql_admin_username }} -N -B
+        -e "SELECT (SELECT COUNT(*) FROM Author), (SELECT COUNT(*) FROM Book);"
+        {{ mysql_database }}
+      environment:
+        MYSQL_PWD: "{{ mysql_admin_password }}"
+      no_log: true
+      changed_when: false
+      register: counts
+
+    - name: Assert seed data present
+      ansible.builtin.assert:
+        that:
+          - counts.stdout.split()[0] | int > 0
+          - counts.stdout.split()[1] | int > 0
+
+- name: Frontend checks
+  when: "'frontend' in group_names"
+  block:
+    - name: Check nginx state
+      ansible.builtin.command: systemctl is-active nginx
+      changed_when: false
+      register: ng
+
+    - name: Assert nginx active
+      ansible.builtin.assert:
+        that: ng.stdout == 'active'
+
+    - name: Validate nginx config
+      ansible.builtin.command: nginx -t
+      become: true
+      changed_when: false
+
+    - name: Request frontend endpoint
+      ansible.builtin.uri:
+        url: "http://127.0.0.1/"
+        status_code: 200
