@@ -41,6 +41,13 @@ stages:
   - stage: Validate
     dependsOn: Prepare
     jobs:
+      - job: intentional_failure_drill
+        displayName: Intentional failure drill
+        steps:
+          - script: |
+              echo "DRILL FAILURE: intentional validation failure for Task 6"
+              exit 1
+            displayName: Intentional failure for Task 6
       - job: validate
         steps:
           - checkout: self
