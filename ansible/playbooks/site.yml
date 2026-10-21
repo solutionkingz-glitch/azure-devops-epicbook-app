@@ -1,0 +1,10 @@
+---
+- name: Common setup on all hosts
+  hosts: all
+  roles:
+    - common
+
+- name: Configure frontend (nginx)
+  hosts: frontend
+  roles:
+    - frontend
