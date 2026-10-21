@@ -1,0 +1,128 @@
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    exclude:
+      - README.md
+
+pool:
+  name: SelfHostedPool-Azure
+
+variables:
+  - group: epicbook-db-secrets
+  - name: secureKeyName
+    value: epicbook_key
+
+stages:
+  - stage: Prepare
+    jobs:
+      - job: prepare
+        steps:
+          - checkout: self
+          - script: |
+              set -euo pipefail
+              ansible --version | head -1
+              command -v rsync
+              ansible-galaxy collection list 2>/dev/null | grep -q ansible.posix \
+                || ansible-galaxy collection install ansible.posix
+            displayName: Verify Ansible, rsync and collections
+          - task: DownloadSecureFile@1
+            name: sshKey
+            displayName: Download SSH private key
+            inputs:
+              secureFile: $(secureKeyName)
+          - script: |
+              set -euo pipefail
+              chmod 600 "$(sshKey.secureFilePath)"
+              test -s "$(sshKey.secureFilePath)" && echo "SSH key downloaded, permissions set"
+            displayName: Restrict key permissions
+
+  - stage: Validate
+    dependsOn: Prepare
+    jobs:
+      - job: validate
+        steps:
+          - checkout: self
+          - task: DownloadSecureFile@1
+            name: sshKey
+            inputs:
+              secureFile: $(secureKeyName)
+          - script: |
+              set -euo pipefail
+              chmod 600 "$(sshKey.secureFilePath)"
+              cd ansible
+              ansible-inventory -i inventory/hosts.ini --list > /dev/null
+              echo "Inventory OK"
+              ansible-playbook playbooks/site.yml --syntax-check
+            displayName: Validate inventory and syntax
+          - script: |
+              set -euo pipefail
+              for v in app_public_ip backend_private_ip mysql_fqdn; do
+                grep -q "^${v}: \"..*\"" ansible/inventory/group_vars/all.yml \
+                  || { echo "Missing handoff value: $v"; exit 1; }
+              done
+              echo "Handoff values present"
+              test -n "$DB_USER" && test -n "$DB_PASS" && echo "Database credentials available (values hidden)"
+            displayName: Check handoff values and secrets
+            env:
+              DB_USER: $(mysql_admin_username)
+              DB_PASS: $(mysql_admin_password)
+          - script: |
+              set -euo pipefail
+              cd ansible
+              ansible all -m ping --private-key "$(sshKey.secureFilePath)"
+            displayName: Test connectivity to both VMs
+
+  - stage: Deploy
+    dependsOn: Validate
+    jobs:
+      - job: deploy
+        steps:
+          - checkout: self
+          - task: DownloadSecureFile@1
+            name: sshKey
+            inputs:
+              secureFile: $(secureKeyName)
+          - script: |
+              set -euo pipefail
+              chmod 600 "$(sshKey.secureFilePath)"
+              EXTRA="$(Agent.TempDirectory)/extra_vars.json"
+              trap 'rm -f "$EXTRA"' EXIT
+              umask 077
+              python3 -c 'import json,os; print(json.dumps({"mysql_admin_username": os.environ["DB_USER"], "mysql_admin_password": os.environ["DB_PASS"]}))' > "$EXTRA"
+              cd ansible
+              ansible-playbook playbooks/site.yml \
+                --private-key "$(sshKey.secureFilePath)" \
+                -e @"$EXTRA"
+            displayName: Run Ansible playbook
+            env:
+              DB_USER: $(mysql_admin_username)
+              DB_PASS: $(mysql_admin_password)
+
+  - stage: Verify
+    dependsOn: Deploy
+    jobs:
+      - job: verify
+        steps:
+          - checkout: self
+          - task: DownloadSecureFile@1
+            name: sshKey
+            inputs:
+              secureFile: $(secureKeyName)
+          - script: |
+              set -euo pipefail
+              chmod 600 "$(sshKey.secureFilePath)"
+              cd ansible
+              ansible backend -b -m command -a "systemctl is-active epicbook" --private-key "$(sshKey.secureFilePath)"
+              ansible frontend -b -m command -a "systemctl is-active nginx" --private-key "$(sshKey.secureFilePath)"
+              ansible frontend -b -m command -a "nginx -t" --private-key "$(sshKey.secureFilePath)"
+            displayName: Check services
+          - script: |
+              set -euo pipefail
+              IP=$(grep '^app_public_ip' ansible/inventory/group_vars/all.yml | cut -d'"' -f2)
+              code=$(curl -s -o /tmp/page.html -w "%{http_code}" "http://$IP/")
+              echo "Frontend HTTP status: $code"
+              test "$code" = "200"
+              grep -q "Deployed by" /tmp/page.html && echo "Footer with name and date found"
+            displayName: Check frontend through Nginx
