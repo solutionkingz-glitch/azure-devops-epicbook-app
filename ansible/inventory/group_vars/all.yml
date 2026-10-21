@@ -1,0 +1,6 @@
+# Non-sensitive values copied from Terraform outputs (manual handoff)
+app_public_ip: "52.247.122.4"
+backend_private_ip: "10.10.2.4"
+mysql_fqdn: "mysql-epicbook-syes7f.mysql.database.azure.com"
+mysql_database: "bookstore"
+app_port: 8080
