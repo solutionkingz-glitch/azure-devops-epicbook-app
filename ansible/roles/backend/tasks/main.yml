@@ -84,3 +84,41 @@
   become: true
   become_user: "{{ app_user }}"
   when: app_code is changed
+
+- name: Create env directory
+  ansible.builtin.file:
+    path: /etc/epicbook
+    state: directory
+    owner: root
+    group: "{{ app_user }}"
+    mode: "0750"
+  become: true
+
+- name: Deploy protected env file
+  ansible.builtin.template:
+    src: epicbook.env.j2
+    dest: /etc/epicbook/epicbook.env
+    owner: root
+    group: "{{ app_user }}"
+    mode: "0640"
+  become: true
+  no_log: true
+  notify: Restart epicbook
+
+- name: Deploy systemd unit
+  ansible.builtin.template:
+    src: epicbook.service.j2
+    dest: /etc/systemd/system/epicbook.service
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Restart epicbook
+
+- name: Enable and start epicbook
+  ansible.builtin.systemd:
+    name: epicbook
+    enabled: true
+    state: started
+    daemon_reload: true
+  become: true

@@ -1,0 +1,75 @@
+---
+- name: Check MySQL port is reachable from backend
+  ansible.builtin.wait_for:
+    host: "{{ mysql_fqdn }}"
+    port: 3306
+    timeout: 30
+
+- name: Create bookstore database if missing
+  ansible.builtin.command: >
+    mysql -h {{ mysql_fqdn }} -u {{ mysql_admin_username }}
+    -e "CREATE DATABASE IF NOT EXISTS {{ mysql_database }};"
+  environment:
+    MYSQL_PWD: "{{ mysql_admin_password }}"
+  no_log: true
+  changed_when: false
+
+- name: Count existing tables
+  ansible.builtin.command: >
+    mysql -h {{ mysql_fqdn }} -u {{ mysql_admin_username }} -N -B
+    -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='{{ mysql_database }}';"
+  environment:
+    MYSQL_PWD: "{{ mysql_admin_password }}"
+  no_log: true
+  changed_when: false
+  register: table_count
+
+- name: Import schema when no tables exist
+  ansible.builtin.shell: >
+    mysql -h {{ mysql_fqdn }} -u {{ mysql_admin_username }}
+    {{ mysql_database }} < {{ app_dir }}/db/BuyTheBook_Schema.sql
+  environment:
+    MYSQL_PWD: "{{ mysql_admin_password }}"
+  no_log: true
+  when: table_count.stdout | int == 0
+  notify: Restart epicbook
+
+- name: Count authors
+  ansible.builtin.command: >
+    mysql -h {{ mysql_fqdn }} -u {{ mysql_admin_username }} -N -B
+    -e "SELECT COUNT(*) FROM {{ mysql_database }}.Author;"
+  environment:
+    MYSQL_PWD: "{{ mysql_admin_password }}"
+  no_log: true
+  changed_when: false
+  register: author_count
+
+- name: Import author seed data when empty
+  ansible.builtin.shell: >
+    mysql -h {{ mysql_fqdn }} -u {{ mysql_admin_username }}
+    {{ mysql_database }} < {{ app_dir }}/db/author_seed.sql
+  environment:
+    MYSQL_PWD: "{{ mysql_admin_password }}"
+  no_log: true
+  when: author_count.stdout | int == 0
+  notify: Restart epicbook
+
+- name: Count books
+  ansible.builtin.command: >
+    mysql -h {{ mysql_fqdn }} -u {{ mysql_admin_username }} -N -B
+    -e "SELECT COUNT(*) FROM {{ mysql_database }}.Book;"
+  environment:
+    MYSQL_PWD: "{{ mysql_admin_password }}"
+  no_log: true
+  changed_when: false
+  register: book_count
+
+- name: Import book seed data when empty
+  ansible.builtin.shell: >
+    mysql -h {{ mysql_fqdn }} -u {{ mysql_admin_username }}
+    {{ mysql_database }} < {{ app_dir }}/db/books_seed.sql
+  environment:
+    MYSQL_PWD: "{{ mysql_admin_password }}"
+  no_log: true
+  when: book_count.stdout | int == 0
+  notify: Restart epicbook

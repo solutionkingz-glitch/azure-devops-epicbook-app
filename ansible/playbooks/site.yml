@@ -18,3 +18,8 @@
   hosts: backend
   roles:
     - backend
+
+- name: Prepare database (from backend VM)
+  hosts: backend
+  roles:
+    - database

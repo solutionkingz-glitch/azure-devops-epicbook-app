@@ -1,0 +1,4 @@
+---
+mysql_admin_username: "epicadmin"
+mysql_database: "bookstore"
+app_dir: /opt/epicbook
