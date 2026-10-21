@@ -1,0 +1,5 @@
+---
+node_major: "18"
+app_dir: /opt/epicbook
+app_user: epicbook
+app_port: 8080

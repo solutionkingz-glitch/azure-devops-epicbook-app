@@ -8,3 +8,13 @@
   hosts: frontend
   roles:
     - frontend
+
+- name: Configure backend (node)
+  hosts: backend
+  roles:
+    - backend
+
+- name: Configure backend (node)
+  hosts: backend
+  roles:
+    - backend
